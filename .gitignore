@@ -209,3 +209,7 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
+/node_modules
+npm-debug.log
+.DS_Store
+/*.env
