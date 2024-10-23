@@ -41,6 +41,8 @@ async function createThread() {
 
 async function addMessage(threadId, message) {
     console.log('Adding a new message to thread: ' + threadId);
+    console.log(openai.beta.threads)
+
     const response = await openai.beta.threads.messages.create(
         threadId,
         {
@@ -65,13 +67,15 @@ async function runAssistant(threadId) {
 }
 
 function calculatePrice({
-                            make,
-                            model,
-                            year,
+                            // make,
+                            // model,
+                            // year,
                             count,
                             category
                         }) {
     const basePrice = 75
+
+    // year < 2007 = Coefficient = 1.3
 
 
     const categoriesCoefficient = {
@@ -110,7 +114,7 @@ async function checkingStatus(res, threadId, runId) {
             messages.push(message.content);
         });
 
-        res.json({messages});
+        res.json({message: messages[0][0].text.value});
     }
 
     // + Addition for function calling
@@ -124,7 +128,7 @@ async function checkingStatus(res, threadId, runId) {
             const tool_calls = runObject.required_action.submit_tool_outputs.tool_calls
             // Can be choose with conditional, if you have multiple function
             // const parsedArgs = JSON.parse(tool_calls[0].function.arguments);
-            console.log('tool_calls:', tool_calls[0]);
+            // console.log('tool_calls:', tool_calls[0]);
 
             const params = JSON.parse(tool_calls[0].function.arguments)
 
@@ -141,7 +145,7 @@ async function checkingStatus(res, threadId, runId) {
                     tool_outputs: [
                         {
                             tool_call_id: tool_calls[0].id,
-                            output: JSON.stringify(price ? `${price}` : 'The price for this type of car is not available.')
+                            output: JSON.stringify(price ? `$${price}` : 'The price for this type of car is not available.')
                         },
                     ],
                 }
