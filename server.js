@@ -41,7 +41,6 @@ async function createThread() {
 
 async function addMessage(threadId, message) {
     console.log('Adding a new message to thread: ' + threadId);
-    console.log(openai.beta.threads)
 
     const response = await openai.beta.threads.messages.create(
         threadId,
@@ -114,29 +113,20 @@ async function checkingStatus(res, threadId, runId) {
             messages.push(message.content);
         });
 
-        res.json({message: messages[0][0].text.value});
+        res.json({messages, messagesList, runObject, message: messages[0][0].text.value});
     }
 
     // + Addition for function calling
     else if (status === 'requires_action') {
         console.log('requires_action.. looking for a function')
 
-        console.log('runObject.required_action.type: ', runObject.required_action.type)
-
         if (runObject.required_action.type === 'submit_tool_outputs') {
             console.log('submit tool outputs ... ')
             const tool_calls = runObject.required_action.submit_tool_outputs.tool_calls
-            // Can be choose with conditional, if you have multiple function
-            // const parsedArgs = JSON.parse(tool_calls[0].function.arguments);
-            // console.log('tool_calls:', tool_calls[0]);
 
             const params = JSON.parse(tool_calls[0].function.arguments)
 
             const price = calculatePrice(params)
-
-            // console.log('Query to search for: ' + parsedArgs.query)
-
-            // const apiResponse = await getSearchResult(parsedArgs.query)
 
             const run = await openai.beta.threads.runs.submitToolOutputs(
                 threadId,
