@@ -17,52 +17,33 @@ const openai = new OpenAI({
 const assistantId = ASSISTANT_ID;
 let pollingInterval;
 
-// + Addition for function calling
-// Remember you can declare function on assistant API (during creation)
-//      or directly at GUI
-
-async function getSearchResult(query) {
-    console.log('------- CALLING AN EXTERNAL API ----------')
-
-    return JSON.stringify({
-        engine: "google",
-        api_key: 'SERPAPI_KEY',
-        q: query,
-        location: "Austin, Texas",
-    });
-}
-
 // Set up a Thread
 async function createThread() {
     console.log('Creating a new thread...');
-    const thread = await openai.beta.threads.create();
-    return thread;
+    return openai.beta.threads.create();
 }
 
 async function addMessage(threadId, message) {
     console.log('Adding a new message to thread: ' + threadId);
 
-    const response = await openai.beta.threads.messages.create(
+    return openai.beta.threads.messages.create(
         threadId,
         {
             role: "user",
             content: message
         }
     );
-    return response;
 }
 
 async function runAssistant(threadId) {
     console.log('Running assistant for thread: ' + threadId)
-    const response = await openai.beta.threads.runs.create(
+    return openai.beta.threads.runs.create(
         threadId,
         {
             assistant_id: assistantId
             // Make sure to not overwrite the original instruction, unless you want to
         }
     );
-
-    return response;
 }
 
 function calculatePrice({
@@ -113,7 +94,9 @@ async function checkingStatus(res, threadId, runId) {
             messages.push(message.content);
         });
 
-        res.json({messages, messagesList, runObject, message: messages[0][0].text.value});
+        res.json({
+            message: messages[0][0].text.value
+        });
     }
 
     // + Addition for function calling
@@ -159,7 +142,7 @@ app.get('/thread', (req, res) => {
 
 app.post('/message', (req, res) => {
     const {message, threadId} = req.body;
-    addMessage(threadId, message).then(message => {
+    addMessage(threadId, message).then(() => {
         // res.json({ messageId: message.id });
 
         // Run the assistant
@@ -169,7 +152,7 @@ app.post('/message', (req, res) => {
             // Check the status
             pollingInterval = setInterval(() => {
                 checkingStatus(res, threadId, runId);
-            }, 5000);
+            }, 3000);
         });
     });
 });
