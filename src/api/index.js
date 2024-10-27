@@ -110,6 +110,86 @@ router.post('/check', async (req, res) => {
     }
 });
 
+let pollingInterval;
+
+async function addMessage(threadId, message) {
+    console.log('Adding a new message to thread: ' + threadId);
+
+    return openai.beta.threads.messages.create(
+        threadId,
+        {
+            role: "user",
+            content: message
+        }
+    );
+}
+
+async function runAssistant(threadId) {
+    console.log('Running assistant for thread: ' + threadId)
+    return openai.beta.threads.runs.create(
+        threadId,
+        {
+            assistant_id: ASSISTANT_ID
+        }
+    );
+}
+
+async function checkingStatus(res, thread_id, run_id) {
+    const runStatus = await openai.beta.threads.runs.retrieve(
+        thread_id,
+        run_id
+    );
+    console.log('Current status: ' + runStatus.status);
+
+    if (runStatus.status === 'completed') {
+        const messages = await openai.beta.threads.messages.list(thread_id);
+        let messageContent = messages.data[0].content[0].text;
+
+        // Remove annotations
+        const annotations = messageContent.annotations || [];
+        annotations.forEach(annotation => {
+            messageContent = messageContent.replace(annotation.text, '');
+        });
+
+        console.log("Run completed, returning response");
+        return res.json({response: messageContent, status: 'completed'});
+    }
+
+    if (runStatus.status === 'requires_action') {
+        console.log("Action in progress...");
+        for (const toolCall of runStatus.required_action.submit_tool_outputs.tool_calls) {
+            if (toolCall.function.name === 'getTintingPrice') {
+                const params = JSON.parse(toolCall.function.arguments);
+                const output = await calculatePrice(params);
+                await openai.beta.threads.runs.submitToolOutputs(
+                    thread_id,
+                    run_id,
+                    {
+                        tool_outputs: [{tool_call_id: toolCall.id, output: JSON.stringify(output)}]
+                    });
+            }
+        }
+    }
+}
+
+router.post('/message', (req, res) => {
+    const {message, thread_id} = req.body;
+    addMessage(thread_id, message).then(() => {
+        // res.json({ messageId: message.id });
+
+        // Run the assistant
+        runAssistant(thread_id).then(run => {
+            const runId = run.id;
+
+            // Check the status
+            pollingInterval = setInterval(() => {
+                checkingStatus(res, thread_id, runId);
+            }, 3000);
+        });
+    });
+});
+
+
 router.use('/emojis', emojis);
 
 module.exports = router;
