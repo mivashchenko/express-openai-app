@@ -55,60 +55,60 @@ router.post('/chat', async (req, res) => {
     }
 });
 
-router.post('/check', async (req, res) => {
-    const {thread_id, run_id} = req.body;
-    if (!thread_id || !run_id) {
-        console.error("Error: Missing thread_id or run_id in /check");
-        return res.status(400).json({response: 'error'});
-    }
-
-    const startTime = Date.now();
-    try {
-        while (Date.now() - startTime < 9000) {  // Timeout in 9 seconds
-            const runStatus = await openai.beta.threads.runs.retrieve(thread_id, run_id);
-            console.log("Checking run status:", runStatus.status);
-
-            if (runStatus.status === 'completed') {
-                const messages = await openai.beta.threads.messages.list(thread_id);
-                let messageContent = messages.data[0].content[0].text;
-
-                // Remove annotations
-                const annotations = messageContent.annotations || [];
-                annotations.forEach(annotation => {
-                    messageContent = messageContent.replace(annotation.text, '');
-                });
-
-                console.log("Run completed, returning response");
-                return res.json({response: messageContent, status: 'completed'});
-            }
-
-            if (runStatus.status === 'requires_action') {
-                console.log("Action in progress...");
-                for (const toolCall of runStatus.required_action.submit_tool_outputs.tool_calls) {
-                    if (toolCall.function.name === 'getTintingPrice') {
-                        const params = JSON.parse(toolCall.function.arguments);
-                        const output = await calculatePrice(params);
-                        await openai.beta.threads.runs.submitToolOutputs(
-                            thread_id,
-                            run_id,
-                            {
-                                tool_outputs: [{tool_call_id: toolCall.id, output: JSON.stringify(output)}]
-                            });
-                    }
-                }
-            }
-
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Sleep for 1 second
-        }
-
-        console.log("Run timed out");
-        res.json({response: 'timeout'});
-
-    } catch (error) {
-        console.error("Error checking run status:", error);
-        res.status(500).json({error: 'Error checking run status'});
-    }
-});
+// router.post('/check', async (req, res) => {
+//     const {thread_id, run_id} = req.body;
+//     if (!thread_id || !run_id) {
+//         console.error("Error: Missing thread_id or run_id in /check");
+//         return res.status(400).json({response: 'error'});
+//     }
+//
+//     const startTime = Date.now();
+//     try {
+//         while (Date.now() - startTime < 9000) {  // Timeout in 9 seconds
+//             const runStatus = await openai.beta.threads.runs.retrieve(thread_id, run_id);
+//             console.log("Checking run status:", runStatus.status);
+//
+//             if (runStatus.status === 'completed') {
+//                 const messages = await openai.beta.threads.messages.list(thread_id);
+//                 let messageContent = messages.data[0].content[0].text;
+//
+//                 // Remove annotations
+//                 const annotations = messageContent.annotations || [];
+//                 annotations.forEach(annotation => {
+//                     messageContent = messageContent.replace(annotation.text, '');
+//                 });
+//
+//                 console.log("Run completed, returning response");
+//                 return res.json({response: messageContent, status: 'completed'});
+//             }
+//
+//             if (runStatus.status === 'requires_action') {
+//                 console.log("Action in progress...");
+//                 for (const toolCall of runStatus.required_action.submit_tool_outputs.tool_calls) {
+//                     if (toolCall.function.name === 'getTintingPrice') {
+//                         const params = JSON.parse(toolCall.function.arguments);
+//                         const output = await calculatePrice(params);
+//                         await openai.beta.threads.runs.submitToolOutputs(
+//                             thread_id,
+//                             run_id,
+//                             {
+//                                 tool_outputs: [{tool_call_id: toolCall.id, output: JSON.stringify(output)}]
+//                             });
+//                     }
+//                 }
+//             }
+//
+//             await new Promise(resolve => setTimeout(resolve, 1000)); // Sleep for 1 second
+//         }
+//
+//         console.log("Run timed out");
+//         res.json({response: 'timeout'});
+//
+//     } catch (error) {
+//         console.error("Error checking run status:", error);
+//         res.status(500).json({error: 'Error checking run status'});
+//     }
+// });
 
 let pollingInterval;
 
@@ -142,6 +142,8 @@ async function checkingStatus(res, thread_id, run_id) {
     console.log('Current status: ' + runStatus.status);
 
     if (runStatus.status === 'completed') {
+        clearInterval(pollingInterval);
+
         const messages = await openai.beta.threads.messages.list(thread_id);
         let messageContent = messages.data[0].content[0].text;
 
@@ -153,9 +155,7 @@ async function checkingStatus(res, thread_id, run_id) {
 
         console.log("Run completed, returning response");
         return res.json({response: messageContent, status: 'completed'});
-    }
-
-    if (runStatus.status === 'requires_action') {
+    } else if (runStatus.status === 'requires_action') {
         console.log("Action in progress...");
         for (const toolCall of runStatus.required_action.submit_tool_outputs.tool_calls) {
             if (toolCall.function.name === 'getTintingPrice') {
