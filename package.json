@@ -4,8 +4,8 @@
   "description": "A basic starter for an express.js API",
   "main": "index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
     "lint": "eslint --fix src",
     "test": "jest"
   },
@@ -21,8 +21,10 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
     "helmet": "^8.0.0",
+    "json-server": "^0.17.0",
     "morgan": "^1.10.0",
-    "openai": "^4.68.4"
+    "openai": "^4.68.4",
+    "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
