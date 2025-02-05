@@ -102,6 +102,8 @@ const mainFunction = async ({
   const runId = res.run_id;
 
   const startTime = Date.now();
+  const processedToolCalls = new Set();
+  const messagesToEmit = [];
 
   try {
     while (Date.now() - startTime < 10000) {
@@ -120,16 +122,17 @@ const mainFunction = async ({
         console.log("Action in progress...");
 
         for (const toolCall of runStatus.required_action.submit_tool_outputs.tool_calls) {
-          if (toolCall.function.name === 'compliance_violation_type') {
+          if (toolCall.function.name === 'compliance_violation_type' && !processedToolCalls.has(toolCall.id)) {
+            processedToolCalls.add(toolCall.id);
             const params = JSON.parse(toolCall.function.arguments);
             const output = getComplianceViolationType(params);
 
-            const randomMessage = {
+            messagesToEmit.push({
               ..._messages[Math.floor(Math.random() * _messages.length)],
               id: new Date().valueOf(),
               violationType: output.violation_type,
               timestamp: new Date().toISOString(),
-            };
+            });
 
             await openai.beta.threads.runs.submitToolOutputs(
               thread.id,
@@ -137,9 +140,11 @@ const mainFunction = async ({
               {
                 tool_outputs: [{tool_call_id: toolCall.id, output: JSON.stringify(output)}]
               });
-
-            socket.emit("newMessage", randomMessage);
           }
+        }
+
+        if (messagesToEmit.length > 0) {
+          socket.emit("newMessagesBatch", messagesToEmit);
         }
       }
 
