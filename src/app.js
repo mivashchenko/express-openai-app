@@ -140,12 +140,13 @@ const mainFunction = async ({
               {
                 tool_outputs: [{tool_call_id: toolCall.id, output: JSON.stringify(output)}]
               });
+
+            if (messagesToEmit.length > 0) {
+              socket.emit("newMessagesBatch", messagesToEmit);
+            }
           }
         }
 
-        if (messagesToEmit.length > 0) {
-          socket.emit("newMessagesBatch", messagesToEmit);
-        }
       }
 
       await new Promise(resolve => setTimeout(resolve, 500));
