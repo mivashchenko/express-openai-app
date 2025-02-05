@@ -70,7 +70,7 @@ const sendMessage = async (threadId, message) => {
   try {
     await openai.beta.threads.messages.create(threadId, {
       role: 'user',
-      content: message
+      content: `Analyze the message: ${message}`
     });
 
     const run = await openai.beta.threads.runs.create(threadId, {
