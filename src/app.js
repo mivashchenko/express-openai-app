@@ -85,10 +85,10 @@ const sendMessage = async (threadId, message) => {
   }
 }
 
-const getComplianceViolationType = ({message_content, violation_type}) => {
+const getComplianceViolationType = ({violation_type}) => {
 
 
-  return {message_content, violation_type}
+  return {violation_type, success: true};
 }
 
 const _messages = dbJSON.messages;
@@ -130,6 +130,7 @@ const mainFunction = async ({
             messagesToEmit.push({
               ..._messages[Math.floor(Math.random() * _messages.length)],
               id: new Date().valueOf(),
+              flagged: true,
               violationType: output.violation_type,
               timestamp: new Date().toISOString(),
             });
