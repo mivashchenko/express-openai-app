@@ -125,6 +125,7 @@ const mainFunction = async ({
             const randomMessage = {
               ..._messages[Math.floor(Math.random() * _messages.length)],
               id: new Date().valueOf(),
+              flagged: Math.random() < 0.5,
               violationType: output.violation_type,
               timestamp: new Date().toISOString(),
             };
