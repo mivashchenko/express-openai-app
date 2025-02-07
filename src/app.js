@@ -86,9 +86,7 @@ const sendMessage = async (threadId, message) => {
 }
 
 const getComplianceViolationType = ({violation_type}) => {
-
-
-  return {violation_type, success: true};
+  return {violation_type, flagged: true}
 }
 
 const _messages = dbJSON.messages;
@@ -102,8 +100,6 @@ const mainFunction = async ({
   const runId = res.run_id;
 
   const startTime = Date.now();
-  const processedToolCalls = new Set();
-  const messagesToEmit = [];
 
   try {
     while (Date.now() - startTime < 10000) {
@@ -122,18 +118,16 @@ const mainFunction = async ({
         console.log("Action in progress...");
 
         for (const toolCall of runStatus.required_action.submit_tool_outputs.tool_calls) {
-          if (toolCall.function.name === 'compliance_violation_type' && !processedToolCalls.has(toolCall.id)) {
-            processedToolCalls.add(toolCall.id);
+          if (toolCall.function.name === 'compliance_violation_type') {
             const params = JSON.parse(toolCall.function.arguments);
             const output = getComplianceViolationType(params);
 
-            messagesToEmit.push({
+            const randomMessage = {
               ..._messages[Math.floor(Math.random() * _messages.length)],
               id: new Date().valueOf(),
-              flagged: true,
               violationType: output.violation_type,
               timestamp: new Date().toISOString(),
-            });
+            };
 
             await openai.beta.threads.runs.submitToolOutputs(
               thread.id,
@@ -142,12 +136,9 @@ const mainFunction = async ({
                 tool_outputs: [{tool_call_id: toolCall.id, output: JSON.stringify(output)}]
               });
 
-            if (messagesToEmit.length > 0) {
-              socket.emit("newMessagesBatch", messagesToEmit);
-            }
+            socket.emit("newMessage", randomMessage);
           }
         }
-
       }
 
       await new Promise(resolve => setTimeout(resolve, 500));
