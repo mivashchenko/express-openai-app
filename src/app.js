@@ -91,34 +91,28 @@ const getComplianceViolationType = ({violation_type}) => {
 
 const _messages = dbJSON.messages;
 
-const mainFunction = async ({
-                              thread,
-                              socket,
-                            }) => {
+const mainFunction = async ({ thread, socket }) => {
   const content = _messages[Math.floor(Math.random() * _messages.length)].content;
   const res = await sendMessage(thread.id, content);
   const runId = res.run_id;
 
-  const startTime = Date.now();
-
-  try {
-    while (Date.now() - startTime < 10000) {
+  const checkRunStatus = async () => {
+    try {
       const runStatus = await openai.beta.threads.runs.retrieve(thread.id, runId);
 
-      if (runStatus.status === 'completed') {
-        await new Promise(resolve => setTimeout(resolve, 500)); // Sleep for 1 second
-
-        await mainFunction({
-          thread,
-          socket
-        });
+      if (runStatus.status === "completed") {
+        console.log("Run completed with status:", runStatus.status);
+        setTimeout(() => mainFunction({ thread, socket }), 500); // Schedule next call
+        return;
       }
 
-      if (runStatus.status === 'requires_action') {
+      if (runStatus.status === "requires_action") {
         console.log("Action in progress...");
 
         for (const toolCall of runStatus.required_action.submit_tool_outputs.tool_calls) {
-          if (toolCall.function.name === 'compliance_violation_type') {
+          console.log(toolCall.function.name);
+
+          if (toolCall.function.name === "compliance_violation_type") {
             const params = JSON.parse(toolCall.function.arguments);
             const output = getComplianceViolationType(params);
 
@@ -130,26 +124,25 @@ const mainFunction = async ({
               timestamp: new Date().toISOString(),
             };
 
-            await openai.beta.threads.runs.submitToolOutputs(
-              thread.id,
-              runId,
-              {
-                tool_outputs: [{tool_call_id: toolCall.id, output: JSON.stringify(output)}]
-              });
+            await openai.beta.threads.runs.submitToolOutputs(thread.id, runId, {
+              tool_outputs: [{ tool_call_id: toolCall.id, output: JSON.stringify(output) }],
+            });
+
+            console.log("New message added to the thread:", randomMessage);
 
             socket.emit("newMessage", randomMessage);
           }
         }
       }
 
-      await new Promise(resolve => setTimeout(resolve, 500));
-
+      setTimeout(checkRunStatus, 500); // Recheck after delay
+    } catch (error) {
+      console.error("Error checking run status:", error);
     }
+  };
 
-  } catch (error) {
-    console.error("Error checking run status:", error);
-  }
-}
+  checkRunStatus();
+};
 
 // Socket.io logic
 io.on("connection", async (socket) => {
