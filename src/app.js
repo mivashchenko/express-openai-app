@@ -91,78 +91,106 @@ const getComplianceViolationType = ({violation_type}) => {
 
 const _messages = dbJSON.messages;
 
+
+const activeSockets = new Set();
+const activeIntervals = new Map();
+
 const mainFunction = async ({ thread, socket }) => {
-  const content = _messages[Math.floor(Math.random() * _messages.length)].content;
-  const res = await sendMessage(thread.id, content);
-  const runId = res.run_id;
+  activeSockets.add(socket.id); // Mark socket as active
 
-  const checkRunStatus = async () => {
+  while (activeSockets.has(socket.id) && socket.connected) {
     try {
-      const runStatus = await openai.beta.threads.runs.retrieve(thread.id, runId);
+      const content = _messages[Math.floor(Math.random() * _messages.length)].content;
+      const res = await sendMessage(thread.id, content);
+      const runId = res.run_id;
 
-      if (runStatus.status === "completed") {
-        console.log("Run completed with status:", runStatus.status);
-        setTimeout(() => mainFunction({ thread, socket }), 500); // Schedule next call
-        return;
-      }
+      while (activeSockets.has(socket.id) && socket.connected) {
+        const runStatus = await openai.beta.threads.runs.retrieve(thread.id, runId);
 
-      if (runStatus.status === "requires_action") {
-        console.log("Action in progress...");
+        if (!activeSockets.has(socket.id) || !socket.connected) {
+          console.log(`🛑 Stopping execution for disconnected socket: ${socket.id}`);
+          return;
+        }
 
-        for (const toolCall of runStatus.required_action.submit_tool_outputs.tool_calls) {
-          console.log(toolCall.function.name);
+        if (runStatus.status === "completed") {
+          console.log("✅ Run completed with status:", runStatus.status);
 
-          if (toolCall.function.name === "compliance_violation_type") {
-            const params = JSON.parse(toolCall.function.arguments);
-            const output = getComplianceViolationType(params);
+          await new Promise(resolve => setTimeout(resolve, 500));
 
-            const randomMessage = {
-              ..._messages[Math.floor(Math.random() * _messages.length)],
-              id: new Date().valueOf(),
-              flagged: Math.random() < 0.5,
-              violationType: output.violation_type,
-              timestamp: new Date().toISOString(),
-            };
+          if (activeSockets.has(socket.id) && socket.connected) {
+            await mainFunction({ thread, socket }); // Restart only if still connected
+          }
+          return;
+        }
 
-            await openai.beta.threads.runs.submitToolOutputs(thread.id, runId, {
-              tool_outputs: [{ tool_call_id: toolCall.id, output: JSON.stringify(output) }],
-            });
+        if (runStatus.status === "requires_action") {
+          console.log("⚡ Action in progress...");
 
-            console.log("New message added to the thread:", randomMessage);
+          for (const toolCall of runStatus.required_action.submit_tool_outputs.tool_calls) {
+            console.log("Tool call:", toolCall.function.name);
 
-            socket.emit("newMessage", randomMessage);
+            if (toolCall.function.name === "compliance_violation_type") {
+              const params = JSON.parse(toolCall.function.arguments);
+              const output = getComplianceViolationType(params);
+
+              const randomMessage = {
+                ..._messages[Math.floor(Math.random() * _messages.length)],
+                id: new Date().valueOf(),
+                flagged: Math.random() < 0.5,
+                violationType: output.violation_type,
+                timestamp: new Date().toISOString(),
+              };
+
+              await openai.beta.threads.runs.submitToolOutputs(thread.id, runId, {
+                tool_outputs: [{ tool_call_id: toolCall.id, output: JSON.stringify(output) }],
+              });
+
+              console.log("🆕 New message added to the thread:", randomMessage);
+
+              if (activeSockets.has(socket.id) && socket.connected) {
+                socket.emit("newMessage", randomMessage);
+              }
+            }
           }
         }
+
+        await new Promise(resolve => setTimeout(resolve, 500)); // Small delay before next check
       }
-
-      setTimeout(checkRunStatus, 500); // Recheck after delay
     } catch (error) {
-      console.error("Error checking run status:", error);
+      console.error("❌ Error checking run status:", error);
+      return;
     }
-  };
-
-  checkRunStatus();
-};
-
-// Socket.io logic
-io.on("connection", async (socket) => {
-  console.log("A user connected");
-
-  const thread = await getThread();
-
-  if (!thread.id) {
-    console.error("Error: Missing thread_id or run_id in ");
   }
 
-  await mainFunction({
-    thread,
-    socket,
-  });
+  console.log(`🛑 Execution stopped for socket: ${socket.id}`);
+};
+
+// 🟢 Handle socket connection
+io.on("connection", async (socket) => {
+  console.log(`🔌 A user connected: ${socket.id}`);
+
+  const thread = await getThread();
+  if (!thread?.id) {
+    console.error("🚨 Error: Missing thread_id or run_id");
+    return;
+  }
+
+  await mainFunction({ thread, socket });
 
   socket.on("disconnect", () => {
-      console.log("A user disconnected");
+    console.log(`❌ Socket disconnected: ${socket.id}`);
+
+    // Remove from active sockets
+    activeSockets.delete(socket.id);
+
+    // Clear any running intervals
+    if (activeIntervals.has(socket.id)) {
+      clearInterval(activeIntervals.get(socket.id));
+      activeIntervals.delete(socket.id);
     }
-  );
+
+    console.log(`🛑 Cleaned up all processes for socket: ${socket.id}`);
+  });
 });
 
 // Start server
